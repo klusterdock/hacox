@@ -6,9 +6,14 @@ WORKDIR /build
 
 COPY . /build
 
-RUN CGO_ENABLED=0 go build -mod vendor -buildmode=pie -ldflags "-X hacox/version.BuildVersion=${VERSION} -linkmode 'external' -extldflags '-static'" -o /opt/output/hacox cmd/main.go
+RUN if [ "${VERSION}" = "Unknown" ]; then \
+        VERSION=$(git describe --dirty --always --tags | sed 's/-/./g'); \
+    fi; \
+    CGO_ENABLED=0 go build -mod vendor -buildmode=pie \
+        -ldflags "-X hacox/version.BuildVersion=${VERSION} -linkmode 'external' -extldflags '-static'" \
+        -o /opt/output/hacox cmd/main.go
 
-FROM alpine:3.11
+FROM scratch
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WORKDIR /etc/hacox
 COPY haproxy.cfg.tmpl /etc/hacox/
