@@ -26,7 +26,6 @@ fmt:
 vet:
 	go vet ./...
 
-
 .PHONY: test
 test: fmt vet envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
@@ -34,7 +33,6 @@ test: fmt vet envtest
 .PHONY: build
 build: fmt vet
 	CGO_ENABLED=0 go build -mod vendor -buildmode=pie $(GO_LDFLAGS) -a -o bin/hacox cmd/main.go
-
 
 LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):

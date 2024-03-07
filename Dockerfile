@@ -1,6 +1,8 @@
-FROM golang:1.21-bookworm
+FROM golang:1.21-alpine
 
 ARG VERSION=Unknown
+
+RUN apk add git build-base
 
 WORKDIR /build
 
@@ -13,8 +15,7 @@ RUN if [ "${VERSION}" = "Unknown" ]; then \
         -ldflags "-X hacox/version.BuildVersion=${VERSION} -linkmode 'external' -extldflags '-static'" \
         -o /opt/output/hacox cmd/main.go
 
-FROM scratch
-ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+FROM haproxy:2.9-alpine
 WORKDIR /etc/hacox
 COPY haproxy.cfg.tmpl /etc/hacox/
 COPY --from=0 /opt/output/hacox /usr/local/bin/hacox

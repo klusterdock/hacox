@@ -1,13 +1,15 @@
-package haconfig
+package hacox
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
-	"time"
 
-	funk "github.com/thoas/go-funk"
+	"github.com/thoas/go-funk"
+	yaml "gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -22,59 +24,95 @@ const (
 	LabePodComponentKubeApiserver = "component=kube-apiserver"
 )
 
-func Start(haProxyTemplatePath, haProxyConfigPath, kubeConfigPath, serversConfigPath, listenAddr string, serverPort int, refreshInterval time.Duration) error {
-	servers, err := LoadServersFromFile(serversConfigPath)
-	if err != nil {
-		return err
-	}
-
-	newConfig, err := GenerateHAConfig(haProxyTemplatePath, listenAddr, servers, serverPort)
-	if err != nil {
-		return err
-	}
-
-	if err := UpdateHAConfig(haProxyConfigPath, newConfig); err != nil {
-		return err
-	}
-
-	timer := time.NewTimer(refreshInterval)
-
-	for {
-		<-timer.C
-		if err := RefreshServers(haProxyTemplatePath, haProxyConfigPath, kubeConfigPath, serversConfigPath, listenAddr, serverPort); err != nil {
-			log.Printf("RefreshServers(%s, %s, %s, %s, %s, %d) error: %v", haProxyTemplatePath, haProxyConfigPath, kubeConfigPath, serversConfigPath, listenAddr, serverPort, err)
-		}
-		timer.Reset(refreshInterval)
-	}
+type ServersConfig struct {
+	Servers []string `yaml:"servers"`
 }
 
-func RefreshServers(haProxyTemplatePath, haProxyConfigPath, kubeConfigPath, serversConfigPath, listenAddr string, serverPort int) error {
-	servers, err := LoadServersFromFile(serversConfigPath)
-	if err != nil {
-		return err
+func (s *ServersConfig) Load(path string) error {
+	if !filepath.IsAbs(path) {
+		if pwd, err := os.Getwd(); err == nil {
+			path = filepath.Join(pwd, path)
+		}
 	}
 
-	for _, server := range servers {
-		restConfig, err := LoadKubeConfig(server, serverPort, kubeConfigPath)
-		if err != nil {
-			continue
-		}
-		newServers, err := LoadServersFromCluster(restConfig)
-		if err != nil {
-			continue
-		}
-		newConfig, err := GenerateHAConfig(haProxyTemplatePath, listenAddr, newServers, serverPort)
-		if err != nil {
-			return err
-		}
-		if err := UpdateHAConfig(haProxyConfigPath, newConfig); err == nil {
-			break
-		}
+	f, err := os.Open(path)
+	if err != nil {
+		log.Printf("open %s error: %v", path, err)
+		return err
+	}
+	defer f.Close()
+
+	decoder := yaml.NewDecoder(f)
+	if err := decoder.Decode(s); err != nil {
+		log.Printf("decode %s error: %v", path, err)
+		return err
 	}
 	return nil
 }
 
-func LoadKubeConfig(server string, serverPort int, kubeConfigPath string) (*rest.Config, error) {
+func (s *ServersConfig) NewFromCluster(serverPort int, kubeConfigPath string) *ServersConfig {
+	for _, server := range s.Servers {
+		restConfig, err := loadKubeConfig(server, serverPort, kubeConfigPath)
+		if err != nil {
+			continue
+		}
+		newServers, err := loadServersFromCluster(restConfig)
+		if err != nil {
+			continue
+		}
+		return &ServersConfig{Servers: newServers}
+	}
+	return s
+}
+
+func (s *ServersConfig) Save(path string) error {
+	if !filepath.IsAbs(path) {
+		if pwd, err := os.Getwd(); err == nil {
+			path = filepath.Join(pwd, path)
+		}
+	}
+
+	encoded, err := yaml.Marshal(s)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, encoded, os.FileMode(0644)); err != nil {
+		log.Printf("write %s error: %v", path, err)
+		return err
+	}
+	return nil
+}
+
+func (s *ServersConfig) Equal(other *ServersConfig) bool {
+	if s == nil && other == nil {
+		return true
+	}
+	if s == nil || other == nil {
+		return false
+	}
+	if len(s.Servers) != len(other.Servers) {
+		return false
+	}
+	for i := range s.Servers {
+		if s.Servers[i] != other.Servers[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *ServersConfig) Update(path string) error {
+	ns := ServersConfig{}
+	if err := ns.Load(path); err != nil {
+		return err
+	}
+	if s.Equal(&ns) {
+		return nil
+	}
+	return s.Save(path)
+}
+
+func loadKubeConfig(server string, serverPort int, kubeConfigPath string) (*rest.Config, error) {
 	apiServerURL := fmt.Sprintf("https://%s:%d", WrapServerForIPv6(server), serverPort)
 
 	restConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
@@ -91,7 +129,7 @@ func LoadKubeConfig(server string, serverPort int, kubeConfigPath string) (*rest
 	return restConfig, nil
 }
 
-func LoadServersFromCluster(restConfig *rest.Config) ([]string, error) {
+func loadServersFromCluster(restConfig *rest.Config) ([]string, error) {
 	r := []string{}
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
@@ -121,10 +159,8 @@ func LoadServersFromCluster(restConfig *rest.Config) ([]string, error) {
 		return nil, err
 	}
 
-	if err == nil {
-		for i := range podList.Items {
-			r = getAddressPod(r, &podList.Items[i])
-		}
+	for i := range podList.Items {
+		r = getAddressFromPod(r, &podList.Items[i])
 	}
 
 	r = funk.UniqString(r)
@@ -136,21 +172,21 @@ func getAddressFromNode(r []string, node *corev1.Node) []string {
 	hasInternalIP := false
 	for _, it := range node.Status.Addresses {
 		if it.Type == corev1.NodeInternalIP {
-
+			r = append(r, it.Address)
+			hasInternalIP = true
 		}
 	}
 	if !hasInternalIP {
 		for _, it := range node.Status.Addresses {
 			if it.Type == corev1.NodeHostName {
 				r = append(r, it.Address)
-				hasInternalIP = true
 			}
 		}
 	}
 	return r
 }
 
-func getAddressPod(r []string, pod *corev1.Pod) []string {
+func getAddressFromPod(r []string, pod *corev1.Pod) []string {
 	if pod.Spec.HostNetwork {
 		r = append(r, pod.Status.PodIP)
 		for _, ip := range pod.Status.HostIPs {

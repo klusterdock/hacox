@@ -8,21 +8,7 @@ metadata:
 spec:
   containers:
   - command:
-    - haproxy
-    - -f
-    - /etc/haproxy/haproxy.cfg
-    image: haproxy:2.9-alpine
-    imagePullPolicy: IfNotPresent
-    name: haproxy
-    resources:
-      requests:
-        cpu: 50m
-    volumeMounts:
-    - mountPath: /etc/haproxy
-      name: haproxy
-  - command:
     - hacox
-    - --haproxy-config=/etc/haproxy/haproxy.cfg
     - --servers-config=/etc/haproxy/backend-servers.yaml
     - --kube-config=/etc/kubernetes/kubelet.conf
     - --server-port=6443
@@ -30,16 +16,12 @@ spec:
     image: ghcr.io/klusterdock/hacox:latest
     imagePullPolicy: IfNotPresent
     name: hacox
-    securityContext:
-      capabilities:
-        add:
-        - SYS_PTRACE
     resources:
       requests:
         cpu: 50m
-      limit:
-        cpu: 100m
     volumeMounts:
+    - mountPath: /etc/ssl/certs
+      name: ca-certs
     - mountPath: /etc/kubernetes/kubelet.conf
       name: kubeconfig
       readOnly: true
@@ -51,7 +33,6 @@ spec:
   hostNetwork: true
   priority: 2000001000
   priorityClassName: system-node-critical
-  shareProcessNamespace: true
   securityContext:
     seccompProfile:
       type: RuntimeDefault

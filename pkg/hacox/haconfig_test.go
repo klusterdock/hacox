@@ -1,4 +1,4 @@
-package haconfig
+package hacox
 
 import (
 	"strings"
@@ -48,16 +48,19 @@ backend backends
   server s2 [fe80::200:ff:fe7e:12d]:6443 check port 6443 inter 1000 maxconn 51200 verify none
 `)
 
-func TestGenerateHAConfig(t *testing.T) {
-	cfg, err := GenerateHAConfig("../../haproxy.cfg.tmpl", "::1:5443", testServers, 6443)
+func TestRender(t *testing.T) {
+	cfg, err := (&HaConfig{
+		Listen:     "::1:5443",
+		Servers:    testServers,
+		ServerPort: 6443,
+	}).Render("../../haproxy.cfg.tmpl")
 	if err != nil {
-		t.Logf("Test GenerateHAConfig error: %v", err)
+		t.Logf("Test HaConfig.Render error: %v", err)
 		t.Fail()
 	} else {
 		if cfg != testHAProxyConfig {
-			t.Logf("Test GenerateHAConfig \nexpect: \n %s \ngot: \n %s", testHAProxyConfig, cfg)
+			t.Logf("Test HaConfig.Render \nexpect: \n %s \ngot: \n %s", testHAProxyConfig, cfg)
 			t.Fail()
 		}
 	}
-
 }
