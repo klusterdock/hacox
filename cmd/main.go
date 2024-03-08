@@ -44,7 +44,7 @@ func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 		defaultKubeConfig = filepath.Join(homeDir, defaultKubeConfig)
 	}
 
-	flags.StringVar(&haProxyTemplate, "haproxy-config-template", "haproxy.cfg.tmpl", "the haproxy config template path")
+	flags.StringVar(&haProxyTemplate, "haproxy-config-template", "/etc/hacox/haproxy.cfg.tmpl", "the haproxy config template path")
 	flags.StringVar(&kubeConfig, "kube-config", defaultKubeConfig, "the kubeconfig path")
 	flags.StringVar(&listenAddr, "listen", "::1:5443", "the listen address")
 	flags.StringVar(&serversConfig, "servers-config", "servers.yaml", "the backend servers config path")
