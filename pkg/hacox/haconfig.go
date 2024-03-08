@@ -10,7 +10,7 @@ import (
 )
 
 type HaConfig struct {
-	Listen     string
+	ListenPort int
 	ServerPort int
 	Servers    []string
 }

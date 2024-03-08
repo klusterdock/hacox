@@ -15,22 +15,22 @@ const (
 
 type Hacox struct {
 	pid                 int
+	listenPort          int
 	serverPort          int
 	kubeConfigPath      string
 	haProxyTemplatePath string
 	serversConfigPath   string
 	haProxyConfigPath   string
-	listenAddr          string
 }
 
-func Start(haProxyTemplatePath, kubeConfigPath, serversConfigPath, listenAddr string, serverPort int, refreshInterval time.Duration) error {
+func Start(haProxyTemplatePath, kubeConfigPath, serversConfigPath string, listenPort, serverPort int, refreshInterval time.Duration) error {
 	h := Hacox{
+		listenPort:          listenPort,
 		serverPort:          serverPort,
 		kubeConfigPath:      kubeConfigPath,
 		haProxyTemplatePath: haProxyTemplatePath,
 		serversConfigPath:   serversConfigPath,
 		haProxyConfigPath:   HaproxyConfigPath,
-		listenAddr:          listenAddr,
 	}
 
 	if err := h.generate(); err != nil {
@@ -62,6 +62,9 @@ func (h *Hacox) startHAProxy() error {
 		return err
 	}
 
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	go func() {
 		log.Fatal(cmd.Wait())
 	}()
@@ -91,7 +94,7 @@ func (h *Hacox) generate() error {
 	}
 
 	hc := &HaConfig{
-		Listen:     h.listenAddr,
+		ListenPort: h.listenPort,
 		ServerPort: h.serverPort,
 		Servers:    sc.Servers,
 	}
@@ -119,7 +122,7 @@ func (h *Hacox) refresh() error {
 	}
 
 	hc := &HaConfig{
-		Listen:     h.listenAddr,
+		ListenPort: h.listenPort,
 		ServerPort: h.serverPort,
 		Servers:    sc.Servers,
 	}

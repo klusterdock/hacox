@@ -31,8 +31,8 @@ func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 	var (
 		haProxyTemplate string
 		kubeConfig      string
-		listenAddr      string
 		serversConfig   string
+		listenPort      int
 		serverPort      int
 		refreshInterval time.Duration
 		showVersion     bool
@@ -46,8 +46,8 @@ func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 
 	flags.StringVar(&haProxyTemplate, "haproxy-config-template", "/etc/hacox/haproxy.cfg.tmpl", "the haproxy config template path")
 	flags.StringVar(&kubeConfig, "kube-config", defaultKubeConfig, "the kubeconfig path")
-	flags.StringVar(&listenAddr, "listen", "::1:5443", "the listen address")
 	flags.StringVar(&serversConfig, "servers-config", "servers.yaml", "the backend servers config path")
+	flags.IntVar(&listenPort, "listen-port", 5443, "the listen port")
 	flags.IntVar(&serverPort, "server-port", 6443, "the backend server port")
 	flags.DurationVar(&refreshInterval, "refresh-interval", time.Minute, "the interval for refresh the backend servers config")
 	flags.BoolVar(&showVersion, "version", false, "show version")
@@ -60,7 +60,7 @@ func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 				fmt.Println(version.BuildVersion)
 				return nil
 			}
-			return hacox.Start(haProxyTemplate, kubeConfig, serversConfig, listenAddr, serverPort, refreshInterval)
+			return hacox.Start(haProxyTemplate, kubeConfig, serversConfig, listenPort, serverPort, refreshInterval)
 		},
 	}
 

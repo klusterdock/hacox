@@ -1,7 +1,6 @@
 global
-  log 127.0.0.1 local0
+  log stdout format raw local0 info
   maxconn 51200
-  tune.ssl.default-dh-param 2048
 
 defaults
   mode tcp
@@ -14,8 +13,13 @@ defaults
   log global
   balance roundrobin
 
-frontend proxy
-  bind {{ .Listen }}
+frontend proxy-ipv4
+  bind 127.0.0.1:{{ .ListenPort }}
+  mode tcp
+  default_backend backends
+
+frontend proxy-ipv6
+  bind ::1:{{ .ListenPort }}
   mode tcp
   default_backend backends
 
@@ -25,7 +29,7 @@ backend backends
   default-server on-marked-down shutdown-sessions
 
   option httpchk
-  http-check connect ssl alpn h2, http/1.1
+  http-check connect ssl alpn h2,http/1.1
   http-check send meth GET uri /healthz
   http-check expect status 200
 {{ $port := .ServerPort }}

@@ -13,9 +13,8 @@ var testServers = []string{
 
 var testHAProxyConfig = strings.TrimSpace(`
 global
-  log 127.0.0.1 local0
+  log stdout format raw local0 info
   maxconn 51200
-  tune.ssl.default-dh-param 2048
 
 defaults
   mode tcp
@@ -28,7 +27,12 @@ defaults
   log global
   balance roundrobin
 
-frontend proxy
+frontend proxy-ipv4
+  bind 127.0.0.1:5443
+  mode tcp
+  default_backend backends
+
+frontend proxy-ipv6
   bind ::1:5443
   mode tcp
   default_backend backends
@@ -39,7 +43,7 @@ backend backends
   default-server on-marked-down shutdown-sessions
 
   option httpchk
-  http-check connect ssl alpn h2, http/1.1
+  http-check connect ssl alpn h2,http/1.1
   http-check send meth GET uri /healthz
   http-check expect status 200
 
@@ -50,16 +54,16 @@ backend backends
 
 func TestRender(t *testing.T) {
 	cfg, err := (&HaConfig{
-		Listen:     "::1:5443",
-		Servers:    testServers,
+		ListenPort: 5443,
 		ServerPort: 6443,
+		Servers:    testServers,
 	}).Render("../../haproxy.cfg.tmpl")
 	if err != nil {
 		t.Logf("Test HaConfig.Render error: %v", err)
 		t.Fail()
 	} else {
 		if cfg != testHAProxyConfig {
-			t.Logf("Test HaConfig.Render \nexpect: \n %s \ngot: \n %s", testHAProxyConfig, cfg)
+			t.Logf("Test HaConfig.Render \nexpect: \n%s \ngot: \n%s", testHAProxyConfig, cfg)
 			t.Fail()
 		}
 	}
