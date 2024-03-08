@@ -12,7 +12,7 @@ RUN if [ "${VERSION}" = "Unknown" ]; then \
         VERSION=$(git describe --dirty --always --tags | sed 's/-/./g'); \
     fi; \
     CGO_ENABLED=0 go build -mod vendor -buildmode=pie \
-        -ldflags "-X hacox/version.BuildVersion=${VERSION} -linkmode 'external' -extldflags '-static'" \
+        -ldflags "-s -w -X hacox/version.BuildVersion=${VERSION} -linkmode 'external' -extldflags '-static'" \
         -o /opt/output/hacox cmd/main.go
 
 FROM haproxy:2.9-alpine

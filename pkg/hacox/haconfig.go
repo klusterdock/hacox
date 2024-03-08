@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"text/template"
 )
 
@@ -39,7 +38,7 @@ func (c *HaConfig) Render(templPath string) (string, error) {
 		log.Printf("render haproxy config template error: %v", err)
 		return "", err
 	}
-	return strings.TrimSpace(buf.String()), nil
+	return buf.String(), nil
 }
 
 func (c *HaConfig) Update(newConfig, path string) (bool, error) {

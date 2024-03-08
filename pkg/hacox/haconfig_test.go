@@ -1,7 +1,6 @@
 package hacox
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -11,7 +10,7 @@ var testServers = []string{
 	"fe80::200:ff:fe7e:12d",
 }
 
-var testHAProxyConfig = strings.TrimSpace(`
+var testHAProxyConfig = `
 global
   log stdout format raw local0 info
   maxconn 51200
@@ -50,7 +49,7 @@ backend backends
   server s0 192.168.1.1:6443 check port 6443 inter 1000 maxconn 51200 verify none
   server s1 a.b.com:6443 check port 6443 inter 1000 maxconn 51200 verify none
   server s2 [fe80::200:ff:fe7e:12d]:6443 check port 6443 inter 1000 maxconn 51200 verify none
-`)
+`
 
 func TestRender(t *testing.T) {
 	cfg, err := (&HaConfig{
