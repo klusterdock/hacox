@@ -17,7 +17,7 @@ RUN if [ "${VERSION}" = "Unknown" ]; then \
 
 FROM haproxy:2.9-alpine
 WORKDIR /etc/hacox
+USER root
 COPY haproxy.cfg.tmpl /etc/hacox/
 COPY --from=0 /opt/output/hacox /usr/local/bin/hacox
-
 CMD [ "/usr/local/bin/hacox" ]

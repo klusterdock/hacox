@@ -57,7 +57,7 @@ func (h *Hacox) startHAProxy() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(cmdPath, "-f", h.haProxyConfigPath)
+	cmd := exec.Command(cmdPath, "-W", "-db", "-f", h.haProxyConfigPath)
 	if err := cmd.Start(); err != nil {
 		return err
 	}

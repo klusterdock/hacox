@@ -23,6 +23,7 @@ spec:
     volumeMounts:
     - mountPath: /etc/ssl/certs
       name: ca-certs
+      readOnly: true
     - mountPath: /etc/kubernetes/kubelet.conf
       name: kubeconfig
       readOnly: true
