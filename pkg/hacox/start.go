@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -11,6 +13,11 @@ import (
 const (
 	HaproxyProgramName = "haproxy"
 	HaproxyConfigPath  = "/tmp/haproxy.cfg"
+	defaultHaproxyUid  = 99
+	defaultHaproxyGid  = 99
+	haproxyUsername    = "haproxy"
+	haproxyGroupname   = "haproxy"
+	haproxyWorkingDir  = "/var/lib/haproxy"
 )
 
 type Hacox struct {
@@ -62,6 +69,27 @@ func (h *Hacox) startHAProxy() error {
 		return err
 	}
 
+	uid := defaultHaproxyUid
+	gid := defaultHaproxyGid
+
+	if u, err := user.Lookup(haproxyUsername); err == nil {
+		if v, err := strconv.Atoi(u.Gid); err == nil {
+			uid = v
+		}
+	}
+
+	if g, err := user.LookupGroup(haproxyGroupname); err == nil {
+		if v, err := strconv.Atoi(g.Gid); err == nil {
+			gid = v
+		}
+	}
+
+	_ = os.MkdirAll(haproxyWorkingDir, os.FileMode(0755))
+	_ = os.Chown(haproxyWorkingDir, uid, gid)
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}
+	cmd.Dir = haproxyWorkingDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

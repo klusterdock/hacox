@@ -102,13 +102,13 @@ func (s *ServersConfig) Equal(other *ServersConfig) bool {
 }
 
 func (s *ServersConfig) Update(path string) error {
-	ns := ServersConfig{}
-	if err := ns.Load(path); err != nil {
-		return err
-	}
-	if s.Equal(&ns) {
+	ns := &ServersConfig{}
+	_ = ns.Load(path)
+
+	if s.Equal(ns) {
 		return nil
 	}
+	log.Printf("update %s", path)
 	return s.Save(path)
 }
 
