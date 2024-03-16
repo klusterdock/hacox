@@ -65,9 +65,6 @@ func (h *Hacox) startHAProxy() error {
 		return err
 	}
 	cmd := exec.Command(cmdPath, "-W", "-db", "-f", h.haProxyConfigPath)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
 
 	uid := defaultHaproxyUid
 	gid := defaultHaproxyGid
@@ -92,6 +89,11 @@ func (h *Hacox) startHAProxy() error {
 	cmd.Dir = haproxyWorkingDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
 
 	go func() {
 		log.Fatal(cmd.Wait())
