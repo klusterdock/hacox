@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    component: hacox
+  name: hacox
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - hacox
+    - --servers-config=/etc/kubernetes/hacox/backend-servers.yaml
+    - --kube-config=/etc/kubernetes/kubelet.conf
+    - --listen-port=5443
+    - --server-port=6443
+    - --refresh-interval=1m
+    image: ghcr.io/klusterdock/hacox:latest
+    imagePullPolicy: IfNotPresent
+    name: hacox
+    resources:
+      requests:
+        cpu: 50m
+    volumeMounts:
+    - mountPath: /etc/ssl/certs
+      name: ca-certs
+      readOnly: true
+    - mountPath: /etc/kubernetes/kubelet.conf
+      name: kubeconfig
+      readOnly: true
+    - mountPath: /var/lib/kubelet/pki
+      name: kubelet-pki
+      readOnly: true
+    - mountPath: /etc/kubernetes/hacox
+      name: hacox
+  hostNetwork: true
+  priority: 2000001000
+  priorityClassName: system-node-critical
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  volumes:
+  - hostPath:
+      path: /etc/ssl/certs
+      type: DirectoryOrCreate
+    name: ca-certs
+  - hostPath:
+      path: /etc/kubernetes/kubelet.conf
+      type: ""
+    name: kubeconfig
+  - hostPath:
+      path: /var/lib/kubelet/pki
+      type: DirectoryOrCreate
+    name: kubelet-pki
+  - hostPath:
+      path: /etc/kubernetes/hacox
+      type: DirectoryOrCreate
+    name: hacox
+status: {}

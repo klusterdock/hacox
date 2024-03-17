@@ -1,0 +1,39 @@
+
+global
+  log stdout format raw local0 info
+  maxconn 51200
+
+defaults
+  mode tcp
+  maxconn 51200
+  option redispatch
+  option abortonclose
+  timeout connect 5000ms
+  timeout client 2m
+  timeout server 2m
+  log global
+  balance roundrobin
+
+frontend proxy-ipv4
+  bind 127.0.0.1:{{ .ListenPort }}
+  mode tcp
+  default_backend backends
+
+frontend proxy-ipv6
+  bind ::1:{{ .ListenPort }}
+  mode tcp
+  default_backend backends
+
+backend backends
+  mode tcp
+  balance roundrobin
+  default-server on-marked-down shutdown-sessions
+
+  option httpchk
+  http-check connect ssl alpn h2,http/1.1
+  http-check send meth GET uri /healthz
+  http-check expect status 200
+{{ $port := .ServerPort }}
+{{- range $i, $server := .Servers }}
+  server s{{ $i }} {{ $server }}:{{ $port }} check port {{ $port }} inter 1000 maxconn 51200 verify none
+{{- end }}
