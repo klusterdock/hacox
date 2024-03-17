@@ -23,10 +23,10 @@ jobs:
         run: |
           GIT_BRANCH="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_REF}" = "refs/pull/"*"/merge" ]]; then
-            GIT_BRANCH="pr-$(echo ${GITHUB_REF} | sed 's|refs/pull/(.*)/merge|\1|g')-${GITHUB_SHA:0:8}"
+            GIT_BRANCH="pr-$(echo ${GITHUB_REF} | sed -r 's|refs/pull/(.*)/merge|\1|g')-${GITHUB_SHA:0:8}"
           fi
           if [[ "${GITHUB_REF}" = "refs/remotes/pull/"*"/merge" ]]; then
-            GIT_BRANCH="pr-$(echo ${GITHUB_REF} | sed 's|refs/remotes/pull/(.*)/merge|\1|g')-${GITHUB_SHA:0:8}"
+            GIT_BRANCH="pr-$(echo ${GITHUB_REF} | sed -r 's|refs/remotes/pull/(.*)/merge|\1|g')-${GITHUB_SHA:0:8}"
           fi
           GIT_BRANCH=$(echo "${GIT_BRANCH}" | tr '/' '-')
 
