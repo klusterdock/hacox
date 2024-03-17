@@ -22,10 +22,10 @@ jobs:
         shell: bash
         run: |
           GIT_BRANCH="${GITHUB_REF_NAME}"
-          if [ "${GITHUB_REF}" == "refs/pull/"*"/merge" ]; then
+          if [[ "${GITHUB_REF}" = "refs/pull/"*"/merge" ]]; then
             GIT_BRANCH="pr-$(echo ${GITHUB_REF} | sed 's|refs/pull/(.*)/merge|\1|g')-${GITHUB_SHA:0:8}"
           fi
-          if [ "${GITHUB_REF}" == "refs/remotes/pull/"*"/merge" ]; then
+          if [[ "${GITHUB_REF}" = "refs/remotes/pull/"*"/merge" ]]; then
             GIT_BRANCH="pr-$(echo ${GITHUB_REF} | sed 's|refs/remotes/pull/(.*)/merge|\1|g')-${GITHUB_SHA:0:8}"
           fi
           GIT_BRANCH=$(echo "${GIT_BRANCH}" | tr '/' '-')
@@ -33,7 +33,7 @@ jobs:
           echo "GIT_BRANCH=${GIT_BRANCH}" >> $GITHUB_ENV
 
           REGISTRY_TAGS="${REGISTRY}/${IMAGE_NAME}:${GIT_BRANCH}"
-          if [ "${GIT_BRANCH}" == "main" ]; then
+          if [[ "${GIT_BRANCH}" = "main" ]]; then
             REGISTRY_TAGS="${REGISTRY_TAGS},${REGISTRY}/${IMAGE_NAME}:latest"
           fi
           echo "REGISTRY_TAGS=${REGISTRY_TAGS}" >> $GITHUB_ENV
