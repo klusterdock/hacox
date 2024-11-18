@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine
+FROM golang:1.23-alpine
 
 ARG VERSION=Unknown
 
@@ -11,13 +11,12 @@ COPY . /build
 RUN if [ "${VERSION}" = "Unknown" ]; then \
         VERSION=$(git describe --dirty --always --tags | sed 's/-/./g'); \
     fi; \
-    CGO_ENABLED=0 go build -mod vendor -buildmode=pie \
-        -ldflags "-s -w -X hacox/version.BuildVersion=${VERSION} -linkmode 'external' -extldflags '-static'" \
-        -o /opt/output/hacox cmd/main.go
+    CGO_ENABLED=0 go build -mod vendor \
+        -ldflags "-s -w -X hacox/version.BuildVersion=${VERSION}" \
+        -o /hacox cmd/main.go
 
-FROM haproxy:2.9-alpine
-WORKDIR /etc/hacox
-USER root
-COPY haproxy.cfg.tmpl /etc/hacox/
-COPY --from=0 /opt/output/hacox /usr/local/bin/hacox
-ENTRYPOINT [ "/usr/local/bin/hacox" ]
+RUN /hacox --version
+
+FROM scratch
+COPY --from=0 /hacox /hacox
+ENTRYPOINT [ "/hacox" ]
