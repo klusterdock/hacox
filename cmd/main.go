@@ -18,7 +18,7 @@ func init() {
 }
 
 func main() {
-	flags := pflag.NewFlagSet("haproxy-config-reloader", pflag.ExitOnError)
+	flags := pflag.NewFlagSet("config", pflag.ExitOnError)
 	pflag.CommandLine = flags
 
 	root := NewRootCommand(flags)
@@ -29,13 +29,15 @@ func main() {
 
 func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 	var (
-		haProxyTemplate string
-		kubeConfig      string
-		serversConfig   string
-		listenPort      int
-		serverPort      int
-		refreshInterval time.Duration
-		showVersion     bool
+		kubeConfig              string
+		serversConfig           string
+		listenAddrs             []string
+		backendPort             int
+		unHealthyCountThreshold int
+		checkInterval           time.Duration
+		refreshInterval         time.Duration
+		showVersion             bool
+		metricsAddr             string
 	)
 
 	defaultKubeConfig := filepath.Join(".kube", "config")
@@ -44,23 +46,33 @@ func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 		defaultKubeConfig = filepath.Join(homeDir, defaultKubeConfig)
 	}
 
-	flags.StringVar(&haProxyTemplate, "haproxy-config-template", "/etc/hacox/haproxy.cfg.tmpl", "the haproxy config template path")
-	flags.StringVar(&kubeConfig, "kube-config", defaultKubeConfig, "the kubeconfig path")
+	flags.StringVar(&kubeConfig, "kubeconfig", defaultKubeConfig, "the kubernetes kubeconfig path")
 	flags.StringVar(&serversConfig, "servers-config", "servers.yaml", "the backend servers config path")
-	flags.IntVar(&listenPort, "listen-port", 5443, "the listen port")
-	flags.IntVar(&serverPort, "server-port", 6443, "the backend server port")
-	flags.DurationVar(&refreshInterval, "refresh-interval", time.Minute, "the interval for refresh the backend servers config")
+	flags.StringSliceVar(&listenAddrs, "address", []string{"127.0.0.1:5443", "[::1]:5443"}, "the listen addresses")
+	flags.StringVar(&metricsAddr, "metrics-addr", ":5444", "the metrics listen address")
+	flags.IntVar(&backendPort, "backend-port", 6443, "the backend kube-apiserver listening port")
+	flags.IntVar(&unHealthyCountThreshold, "unhealthy-count-threshold", 3, "the threshold for the number of unhealthy counts")
+	flags.DurationVar(&refreshInterval, "refresh-interval", 2*time.Minute, "the interval for refresh the backend servers config from kubernetes")
+	flags.DurationVar(&checkInterval, "check-interval", 2*time.Second, "the interval for checking the health of the backend servers")
 	flags.BoolVar(&showVersion, "version", false, "show version")
 
 	cmd := &cobra.Command{
-		Short: "HAProxy config reloader",
-		Long:  "Auto refresh HAProxy config for the Kubernetes controlplane endpoints",
+		Short: "proxy multiple kubernetes api servers",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
 				fmt.Println(version.BuildVersion)
 				return nil
 			}
-			return hacox.Start(haProxyTemplate, kubeConfig, serversConfig, listenPort, serverPort, refreshInterval)
+			return hacox.Start(
+				kubeConfig,
+				serversConfig,
+				metricsAddr,
+				listenAddrs,
+				backendPort,
+				unHealthyCountThreshold,
+				checkInterval,
+				refreshInterval,
+			)
 		},
 	}
 

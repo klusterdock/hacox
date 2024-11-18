@@ -11,9 +11,11 @@ spec:
     - hacox
     - --servers-config=/etc/kubernetes/hacox/backend-servers.yaml
     - --kube-config=/etc/kubernetes/kubelet.conf
-    - --listen-port=5443
-    - --server-port=6443
+    - --address=[::1]:5443
+    - --backend-port=6443
     - --refresh-interval=1m
+    - --check-interval=2s
+    - --not-healthy-count-threshold=3
     image: ghcr.io/klusterdock/hacox:latest
     imagePullPolicy: IfNotPresent
     name: hacox
@@ -55,4 +57,3 @@ spec:
       path: /etc/kubernetes/hacox
       type: DirectoryOrCreate
     name: hacox
-status: {}
