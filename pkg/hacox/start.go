@@ -7,10 +7,10 @@ import (
 	"time"
 )
 
-func Start(kubeConfigPath, serversConfigPath, metricsAddr string, listenAddrs []string, backendPort, notHealthyCountThreshold int, checkInterval, refreshInterval time.Duration) error {
+func Start(kubeConfigPath, serversConfigPath, metricsAddr string, listenAddrs []string, backendPort, unHealthyCountThreshold int, checkInterval, refreshInterval time.Duration) error {
 
 	log.Printf("starting hacox on %s", strings.Join(listenAddrs, ", "))
-	log.Printf("not healthy count threshold: %d", notHealthyCountThreshold)
+	log.Printf("unhealthy count threshold: %d", unHealthyCountThreshold)
 	log.Printf("refresh interval: %s", refreshInterval)
 	log.Printf("check interval: %s", checkInterval)
 	log.Printf("kubeconfig path: %s", kubeConfigPath)
@@ -19,7 +19,7 @@ func Start(kubeConfigPath, serversConfigPath, metricsAddr string, listenAddrs []
 	log.Printf("metrics addr: %s", metricsAddr)
 
 	proxy := NewProxy(listenAddrs)
-	hc := NewHealthCheck(checkInterval, notHealthyCountThreshold, proxy.OnNotify)
+	hc := NewHealthCheck(checkInterval, unHealthyCountThreshold, proxy.OnNotify)
 	metrics := NewMetrics(metricsAddr, proxy.GetBackendsClientsCount, hc.GetBackendsHealth)
 
 	sc, err := NewServersConfig(serversConfigPath, kubeConfigPath, backendPort, refreshInterval, proxy.UpdateBackends, hc.UpdateBackends)

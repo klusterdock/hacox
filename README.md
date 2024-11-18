@@ -1,20 +1,21 @@
 # Hacox
 
-Hacox is a configuration auto reloader for HAProxy.
+Hacox is a multi-apiserver proxy.
 
-It's deployed with HAProxy on each node. The HAProxy proxies the multiple kube-apiserver. While the Hacox continually collects the kube-apiserver's endpoints from the cluster's nodes and pods information. Hacox will auto-update HAProxy's configuration when the kube-apiserver's endpoint is changed.
+Deployed on each node, it proxies multiple kube-apiservers for the kubelet. Hacox continuously gathers kube-apiserver endpoints from the cluster's nodes and pod information, enabling automatic updates to the configuration when kube-apiserver endpoints change. It also monitors the health of the kube-apiservers.
 
 ```
 Usage:
   hacox [flags]
 
 Flags:
-    --haproxy-config-template string   the haproxy config template path (default "/etc/hacox/haproxy.cfg.tmpl")
--h, --help                             help for this command
-    --kube-config string               the kubeconfig path (default "/Users/wangtengfei/.kube/config")
-    --listen-port int                  the listen port (default 5443)
-    --refresh-interval duration        the interval for refresh the backend servers config (default 1m0s)
-    --server-port int                  the backend server port (default 6443)
-    --servers-config string            the backend servers config path (default "servers.yaml")
-    --version                          show version
-```
+      --address strings                   the listen addresses (default [127.0.0.1:5443,[::1]:5443])
+      --backend-port int                  the backend kube-apiserver listening port (default 6443)
+      --check-interval duration           the interval for checking the health of the backend servers (default 2s)
+  -h, --help                              help for this command
+      --kubeconfig string                 the kubernetes kubeconfig path (default "$HOME/.kube/config")
+      --metrics-addr string               the metrics listen address (default ":5444")
+      --unhealthy-count-threshold int     the threshold for the number of unhealthy counts (default 3)
+      --refresh-interval duration         the interval for refresh the backend servers config from kubernetes (default 2m0s)
+      --servers-config string             the backend servers config path (default "servers.yaml")
+      --version                           show version

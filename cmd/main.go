@@ -29,15 +29,15 @@ func main() {
 
 func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 	var (
-		kubeConfig               string
-		serversConfig            string
-		listenAddrs              []string
-		backendPort              int
-		notHealthyCountThreshold int
-		checkInterval            time.Duration
-		refreshInterval          time.Duration
-		showVersion              bool
-		metricsAddr              string
+		kubeConfig              string
+		serversConfig           string
+		listenAddrs             []string
+		backendPort             int
+		unHealthyCountThreshold int
+		checkInterval           time.Duration
+		refreshInterval         time.Duration
+		showVersion             bool
+		metricsAddr             string
 	)
 
 	defaultKubeConfig := filepath.Join(".kube", "config")
@@ -46,13 +46,13 @@ func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 		defaultKubeConfig = filepath.Join(homeDir, defaultKubeConfig)
 	}
 
-	flags.StringVar(&kubeConfig, "kubeconfig", defaultKubeConfig, "the kubeconfig path")
+	flags.StringVar(&kubeConfig, "kubeconfig", defaultKubeConfig, "the kubernetes kubeconfig path")
 	flags.StringVar(&serversConfig, "servers-config", "servers.yaml", "the backend servers config path")
-	flags.StringSliceVar(&listenAddrs, "address", []string{"127.0.0.1:5443", "[::1]:5443"}, "the listen address")
+	flags.StringSliceVar(&listenAddrs, "address", []string{"127.0.0.1:5443", "[::1]:5443"}, "the listen addresses")
 	flags.StringVar(&metricsAddr, "metrics-addr", ":5444", "the metrics listen address")
-	flags.IntVar(&backendPort, "backend-port", 6443, "the backend kube-apiserver port")
-	flags.IntVar(&notHealthyCountThreshold, "not-healthy-count-threshold", 3, "the threshold for the number of unhealthy counts")
-	flags.DurationVar(&refreshInterval, "refresh-interval", time.Minute, "the interval for refresh the backend servers config")
+	flags.IntVar(&backendPort, "backend-port", 6443, "the backend kube-apiserver listening port")
+	flags.IntVar(&unHealthyCountThreshold, "unhealthy-count-threshold", 3, "the threshold for the number of unhealthy counts")
+	flags.DurationVar(&refreshInterval, "refresh-interval", 2*time.Minute, "the interval for refresh the backend servers config from kubernetes")
 	flags.DurationVar(&checkInterval, "check-interval", 2*time.Second, "the interval for checking the health of the backend servers")
 	flags.BoolVar(&showVersion, "version", false, "show version")
 
@@ -69,7 +69,7 @@ func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 				metricsAddr,
 				listenAddrs,
 				backendPort,
-				notHealthyCountThreshold,
+				unHealthyCountThreshold,
 				checkInterval,
 				refreshInterval,
 			)

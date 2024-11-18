@@ -18,25 +18,25 @@ const (
 type NotifyFunc func(backend string, healthy bool)
 
 type HealthCheck struct {
-	client                   *http.Client
-	lock                     sync.RWMutex
-	backends                 []string
-	checkInterval            time.Duration
-	checking                 map[string]struct{}
-	notHealthyCount          map[string]int
-	notHealthyCountThreshold int
-	isHealthy                map[string]bool
-	notiftyFunc              NotifyFunc
+	client                  *http.Client
+	lock                    sync.RWMutex
+	backends                []string
+	checkInterval           time.Duration
+	checking                map[string]struct{}
+	unHealthyCount          map[string]int
+	unHealthyCountThreshold int
+	isHealthy               map[string]bool
+	notiftyFunc             NotifyFunc
 }
 
-func NewHealthCheck(checkInterval time.Duration, notHealthyCountThreshold int, notifyfunc NotifyFunc) *HealthCheck {
+func NewHealthCheck(checkInterval time.Duration, unHealthyCountThreshold int, notifyfunc NotifyFunc) *HealthCheck {
 	return &HealthCheck{
-		checkInterval:            checkInterval,
-		notHealthyCountThreshold: notHealthyCountThreshold,
-		checking:                 make(map[string]struct{}),
-		notHealthyCount:          make(map[string]int),
-		isHealthy:                make(map[string]bool),
-		notiftyFunc:              notifyfunc,
+		checkInterval:           checkInterval,
+		unHealthyCountThreshold: unHealthyCountThreshold,
+		checking:                make(map[string]struct{}),
+		unHealthyCount:          make(map[string]int),
+		isHealthy:               make(map[string]bool),
+		notiftyFunc:             notifyfunc,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 			Transport: &http.Transport{
@@ -132,9 +132,9 @@ func (hc *HealthCheck) failed(backend string) bool {
 
 	delete(hc.checking, backend)
 	if hc.isHealthy[backend] {
-		hc.notHealthyCount[backend]++
+		hc.unHealthyCount[backend]++
 	}
-	if hc.notHealthyCount[backend] >= hc.notHealthyCountThreshold {
+	if hc.unHealthyCount[backend] >= hc.unHealthyCountThreshold {
 		if hc.isHealthy[backend] {
 			hc.isHealthy[backend] = false
 			return true
@@ -148,7 +148,7 @@ func (hc *HealthCheck) success(backend string) bool {
 	defer hc.lock.Unlock()
 
 	delete(hc.checking, backend)
-	hc.notHealthyCount[backend] = 0
+	hc.unHealthyCount[backend] = 0
 	if !hc.isHealthy[backend] {
 		hc.isHealthy[backend] = true
 		return true
@@ -178,7 +178,7 @@ func (hc *HealthCheck) UpdateBackends(backends []string) {
 	for _, it := range removed {
 		hc.lock.Lock()
 		delete(hc.isHealthy, it)
-		delete(hc.notHealthyCount, it)
+		delete(hc.unHealthyCount, it)
 		hc.lock.Unlock()
 		if hc.notiftyFunc != nil {
 			hc.notiftyFunc(it, false)
