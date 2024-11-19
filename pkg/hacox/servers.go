@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
@@ -80,7 +81,7 @@ func (sc *ServersConfig) Start(ctx context.Context) error {
 }
 
 func (sc *ServersConfig) refresh() error {
-	servers, err := sc.fromCluster(sc.serverPort, sc.kubeConfigPath)
+	servers, err := sc.fromCluster()
 	if err != nil {
 		return err
 	}
@@ -129,17 +130,17 @@ func (sc *ServersConfig) load() error {
 	return nil
 }
 
-func (sc *ServersConfig) fromCluster(serverPort int, kubeConfigPath string) ([]string, error) {
+func (sc *ServersConfig) fromCluster() ([]string, error) {
 	var err error
-	_, err = os.ReadFile(kubeConfigPath)
+	_, err = os.ReadFile(sc.kubeConfigPath)
 	if err != nil {
-		log.Printf("read kubeconfig file %s error: %v", kubeConfigPath, err)
+		log.Printf("read kubeconfig file %s error: %v", sc.kubeConfigPath, err)
 		return nil, err
 	}
 
-	for _, server := range sc.servers {
+	for _, server := range disorder(sc.servers) {
 		var restConfig *rest.Config
-		restConfig, err = getRESTConfig(server, serverPort, kubeConfigPath)
+		restConfig, err = getRESTConfig(server, sc.serverPort, sc.kubeConfigPath)
 		if err != nil {
 			log.Printf("get rest config for server %s error: %v", server, err)
 			continue
@@ -235,6 +236,13 @@ func fromCluster(restConfig *rest.Config) ([]string, error) {
 func normal(v []string) []string {
 	v = funk.UniqString(v)
 	sort.Strings(v)
+	return v
+}
+
+func disorder(v []string) []string {
+	rand.Shuffle(len(v), func(i, j int) {
+		v[i], v[j] = v[j], v[i]
+	})
 	return v
 }
 
