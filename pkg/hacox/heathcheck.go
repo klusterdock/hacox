@@ -72,6 +72,7 @@ func (hc *HealthCheck) Start(ctx context.Context) error {
 					log.Printf("health check failed: %s", err)
 				}
 			}
+			timer.Reset(hc.checkInterval)
 		case <-ctx.Done():
 			return nil
 		}
@@ -88,7 +89,9 @@ func (hc *HealthCheck) check(backend string) error {
 	hc.lock.Unlock()
 
 	var err error
-	defer hc.updateStatue(backend, err)
+	defer func() {
+		hc.updateStatue(backend, err)
+	}()
 
 	resp, err := hc.client.Get(fmt.Sprintf("https://%s%s", backend, HealthCheckPath))
 	if err != nil {
@@ -167,6 +170,12 @@ func (hc *HealthCheck) UpdateBackends(backends []string) {
 	oldBackends = slices.Clone(hc.backends)
 	hc.backends = slices.Clone(backends)
 	hc.lock.Unlock()
+
+	for _, it := range backends {
+		if !slices.Contains(oldBackends, it) {
+			hc.isHealthy[it] = true
+		}
+	}
 
 	var removed []string
 	for _, it := range oldBackends {

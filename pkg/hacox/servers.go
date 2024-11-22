@@ -74,6 +74,7 @@ func (sc *ServersConfig) Start(ctx context.Context) error {
 			if err := sc.refresh(); err != nil {
 				log.Printf("refresh servers error: %v", err)
 			}
+			timer.Reset(sc.interval)
 		case <-ctx.Done():
 			return nil
 		}
