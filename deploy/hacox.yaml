@@ -8,14 +8,15 @@ metadata:
 spec:
   containers:
   - command:
-    - hacox
-    - --servers-config=/etc/kubernetes/hacox/backend-servers.yaml
-    - --kube-config=/etc/kubernetes/kubelet.conf
+    - /hacox
+    - --servers-config=/etc/kubernetes/hacox/servers.yaml
+    - --kubeconfig=/etc/kubernetes/kubelet.conf
     - --address=[::1]:5443
+    - --address=127.0.0.1:5443
     - --backend-port=6443
-    - --refresh-interval=1m
+    - --refresh-interval=2m
     - --check-interval=2s
-    - --not-healthy-count-threshold=3
+    - --unhealthy-count-threshold=3
     image: ghcr.io/klusterdock/hacox:latest
     imagePullPolicy: IfNotPresent
     name: hacox
