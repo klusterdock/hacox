@@ -1,10 +1,16 @@
 package hacox
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,29 +20,30 @@ import (
 	"github.com/thoas/go-funk"
 	yaml "gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/net"
 )
 
 const (
-	LabelNodeRoleControlPlane     = "node-role.kubernetes.io/control-plane"
-	LabelNodeRoleMaster           = "node-role.kubernetes.io/master"
-	LabePodComponentKubeApiserver = "component=kube-apiserver"
+	labelNodeRoleControlPlane      = "node-role.kubernetes.io/control-plane"
+	labelNodeRoleMaster            = "node-role.kubernetes.io/master"
+	labelPodComponentKubeApiserver = "component=kube-apiserver"
 )
 
 type UpdateFunc func(servers []string)
 
 type ServersConfig struct {
+	client         *http.Client
 	servers        []string
 	configPath     string
 	kubeConfigPath string
 	serverPort     int
 	interval       time.Duration
 	updateFuncs    []UpdateFunc
+	kubeConfig     []byte
+	authHeader     string
+	clientCert     *tls.Certificate
+	disorder       []int
 }
 
 func NewServersConfig(configPath, kubeConfigPath string, serverPort int, interval time.Duration, updateFuncs ...UpdateFunc) (*ServersConfig, error) {
@@ -56,16 +63,27 @@ func NewServersConfig(configPath, kubeConfigPath string, serverPort int, interva
 		interval:       interval,
 		updateFuncs:    updateFuncs,
 	}
+	sc.client = &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify:   true,
+				GetClientCertificate: sc.getClientCertificate,
+			},
+		},
+	}
 
-	if err := sc.load(); err != nil {
+	servers, err := sc.load()
+	if err != nil {
 		return nil, err
 	}
 
-	sc.updateServers(sc.servers)
+	sc.updateServers(servers)
 	return sc, nil
 }
 
 func (sc *ServersConfig) Start(ctx context.Context) error {
+	_ = sc.refresh()
 	timer := time.NewTimer(sc.interval)
 	defer timer.Stop()
 	for {
@@ -97,58 +115,54 @@ func (sc *ServersConfig) refresh() error {
 }
 
 func (sc *ServersConfig) updateServers(servers []string) {
+	if len(servers) != len(sc.servers) {
+		sc.disorder = disorder(len(servers))
+	}
 	sc.servers = servers
-	servers = sc.serversWithPort()
+	serversWithPort := sc.serversWithPort()
 	for _, f := range sc.updateFuncs {
 		if f != nil {
-			f(servers)
+			f(serversWithPort)
 		}
 	}
 }
 
 func (sc *ServersConfig) serversWithPort() []string {
 	return funk.Map(sc.servers, func(server string) string {
-		return fmt.Sprintf("%s:%d", server, sc.serverPort)
+		return fmt.Sprintf("%s:%d", wrapIPv6(server), sc.serverPort)
 	}).([]string)
 }
 
-func (sc *ServersConfig) load() error {
+func (sc *ServersConfig) load() ([]string, error) {
 	f, err := os.Open(sc.configPath)
 	if err != nil {
 		log.Printf("open %s error: %v", sc.configPath, err)
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
-	decoder := yaml.NewDecoder(f)
-	var servers []string
-	if err := decoder.Decode(&servers); err != nil {
+	var r []string
+	if err := yaml.NewDecoder(f).Decode(&r); err != nil {
 		log.Printf("decode %s error: %v", sc.configPath, err)
-		return err
+		return nil, err
 	}
 
-	sc.servers = normal(servers)
-	return nil
+	r = funk.UniqString(r)
+	sort.Strings(r)
+	return r, nil
 }
 
 func (sc *ServersConfig) fromCluster() ([]string, error) {
 	var err error
-	_, err = os.ReadFile(sc.kubeConfigPath)
-	if err != nil {
-		log.Printf("read kubeconfig file %s error: %v", sc.kubeConfigPath, err)
+	if err := sc.prepareAuthConfig(); err != nil {
+		log.Printf("prepare auth config error: %v", err)
 		return nil, err
 	}
 
-	for _, server := range disorder(sc.servers) {
-		var restConfig *rest.Config
-		restConfig, err = getRESTConfig(server, sc.serverPort, sc.kubeConfigPath)
-		if err != nil {
-			log.Printf("get rest config for server %s error: %v", server, err)
-			continue
-		}
-
+	for _, idx := range sc.disorder {
+		server := sc.servers[idx]
 		var servers []string
-		servers, err = fromCluster(restConfig)
+		servers, err = sc.fetchFromCluster(server, sc.serverPort)
 		if err != nil {
 			log.Printf("get servers from cluster with server %s error: %v", server, err)
 			continue
@@ -170,6 +184,198 @@ func (sc *ServersConfig) save() error {
 	return nil
 }
 
+func (sc *ServersConfig) getClientCertificate(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+	return sc.clientCert, nil
+}
+
+func (sc *ServersConfig) prepareAuthConfig() error {
+	kubeConfig, err := os.ReadFile(sc.kubeConfigPath)
+	if err != nil {
+		return fmt.Errorf("read kubeconfig file %s error: %v", sc.kubeConfigPath, err)
+	}
+	if bytes.Equal(kubeConfig, sc.kubeConfig) {
+		return nil
+	}
+
+	cfg, err := clientcmd.Load(kubeConfig)
+	if err != nil {
+		log.Printf("load kubeconfig file %s error: %v", sc.kubeConfigPath, err)
+		return err
+	}
+
+	if len(cfg.Contexts) == 0 {
+		return fmt.Errorf("no context found in kubeconfig file %s", sc.kubeConfigPath)
+	}
+
+	context := cfg.Contexts[cfg.CurrentContext]
+	if context == nil {
+		return fmt.Errorf("no context named '%s' found in kubeconfig file %s", cfg.CurrentContext, sc.kubeConfigPath)
+	}
+
+	authInfo := cfg.AuthInfos[context.AuthInfo]
+	if authInfo == nil {
+		return fmt.Errorf("no auth info named '%s' found in context %s", context.AuthInfo, cfg.CurrentContext)
+	}
+
+	if authInfo.Token != "" {
+		sc.authHeader = "Bearer " + authInfo.Token
+		sc.clientCert = nil
+		sc.kubeConfig = kubeConfig
+		return nil
+	}
+
+	if authInfo.TokenFile != "" {
+		token, err := os.ReadFile(authInfo.TokenFile)
+		if err != nil {
+			return fmt.Errorf("read token file %s error: %v", authInfo.TokenFile, err)
+		}
+		sc.authHeader = "Bearer " + string(token)
+		sc.clientCert = nil
+		sc.kubeConfig = kubeConfig
+		return nil
+	}
+
+	if authInfo.Username != "" && authInfo.Password != "" {
+		sc.authHeader = "Basic " + base64.StdEncoding.EncodeToString([]byte(authInfo.Username+":"+authInfo.Password))
+		sc.clientCert = nil
+		sc.kubeConfig = kubeConfig
+		return nil
+	}
+
+	if len(authInfo.ClientCertificateData) > 0 && len(authInfo.ClientKeyData) > 0 {
+		cert, err := tls.X509KeyPair(authInfo.ClientCertificateData, authInfo.ClientKeyData)
+		if err != nil {
+			return fmt.Errorf("parse client certificate error: %v", err)
+		}
+		sc.clientCert = &cert
+		sc.authHeader = ""
+		sc.kubeConfig = kubeConfig
+		return nil
+	}
+
+	if authInfo.ClientCertificate != "" && authInfo.ClientKey != "" {
+		cert, err := tls.LoadX509KeyPair(authInfo.ClientCertificate, authInfo.ClientKey)
+		if err != nil {
+			return fmt.Errorf("load client certificate from file %s and key file %s error: %v", authInfo.ClientCertificate, authInfo.ClientKey, err)
+		}
+		sc.clientCert = &cert
+		sc.authHeader = ""
+		sc.kubeConfig = kubeConfig
+		return nil
+	}
+
+	if authInfo.Exec != nil {
+		return fmt.Errorf("exec auth info is not supported")
+	}
+
+	if authInfo.AuthProvider != nil {
+		return fmt.Errorf("auth provider is not supported")
+	}
+
+	sc.clientCert = nil
+	sc.authHeader = ""
+	sc.kubeConfig = kubeConfig
+	return nil
+}
+
+type Node struct {
+	Status struct {
+		Addresses []corev1.NodeAddress `json:"addresses"`
+	} `json:"status"`
+}
+
+type NodeList struct {
+	Items []Node `json:"items"`
+}
+
+type Pod struct {
+	Status struct {
+		PodIP   string          `json:"podIP"`
+		HostIPs []corev1.HostIP `json:"hostIPs"`
+	} `json:"status"`
+}
+
+type PodList struct {
+	Items []Pod `json:"items"`
+}
+
+func (sc *ServersConfig) request(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if sc.authHeader != "" {
+		req.Header.Set("Authorization", sc.authHeader)
+	}
+
+	return sc.client.Do(req)
+}
+
+func (sc *ServersConfig) fetchFromCluster(server string, serverPort int) ([]string, error) {
+	var r []string
+
+	endpoint := fmt.Sprintf("https://%s:%d", wrapIPv6(server), serverPort)
+
+	for _, label := range []string{
+		labelNodeRoleControlPlane,
+		labelNodeRoleMaster,
+	} {
+		url := fmt.Sprintf("%s/api/v1/nodes?labelSelector=%s", endpoint, label)
+		resp, err := sc.request(url)
+		if err != nil {
+			log.Printf("get nodes from %s error: %v", url, err)
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		t, err := fromNodes(resp.Body)
+		if err != nil {
+			log.Printf("decode nodes from %s error: %v", url, err)
+			return nil, err
+		}
+		r = merge(r, t)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/namespaces/kube-system/pods?labelSelector=%s", endpoint, labelPodComponentKubeApiserver)
+	resp, err := sc.request(url)
+	if err != nil {
+		log.Printf("get pods from %s error: %v", url, err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	t, err := fromPods(resp.Body)
+	if err != nil {
+		log.Printf("decode pods from %s error: %v", url, err)
+		return nil, err
+	}
+	r = merge(r, t)
+
+	sort.Strings(r)
+	return r, nil
+}
+
+func merge(a, b []string) []string {
+	for _, it := range b {
+		if !slices.Contains(a, it) {
+			a = append(a, it)
+		}
+	}
+	return a
+}
+
+func disorder(n int) []int {
+	r := make([]int, n)
+	for i := range r {
+		r[i] = i
+	}
+	rand.Shuffle(len(r), func(i, j int) {
+		r[i], r[j] = r[j], r[i]
+	})
+	return r
+}
+
 func wrapIPv6(server string) string {
 	ip := net.ParseIPSloppy(server)
 
@@ -180,99 +386,35 @@ func wrapIPv6(server string) string {
 	return server
 }
 
-func getRESTConfig(server string, serverPort int, kubeConfigPath string) (*rest.Config, error) {
-	restConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeConfigPath},
-		&clientcmd.ConfigOverrides{
-			ClusterInfo: clientcmdapi.Cluster{
-				Server: fmt.Sprintf("https://%s:%d", wrapIPv6(server), serverPort),
-			},
-		}).ClientConfig()
-
-	if err != nil {
-		log.Printf("load rest config from %s for server %s:%d error: %v", kubeConfigPath, server, serverPort, err)
+func fromNodes(data io.ReadCloser) ([]string, error) {
+	var nodeList NodeList
+	if err := json.NewDecoder(data).Decode(&nodeList); err != nil {
 		return nil, err
 	}
 
-	return restConfig, nil
-}
-
-func fromCluster(restConfig *rest.Config) ([]string, error) {
-	r := []string{}
-	clientset, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		log.Printf("create kubernetes clientset rest error: %v", err)
-		return nil, err
-	}
-
-	ctx := context.Background()
-
-	for _, label := range []string{
-		LabelNodeRoleControlPlane,
-		LabelNodeRoleMaster,
-	} {
-		nodeList, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{LabelSelector: label})
-		if err != nil {
-			log.Printf("list nodes with label %s error: %v", label, err)
-			return nil, err
-		}
-		for i := range nodeList.Items {
-			r = append(r, fromNode(&nodeList.Items[i])...)
-		}
-	}
-
-	podList, err := clientset.CoreV1().Pods(metav1.NamespaceSystem).List(ctx, metav1.ListOptions{LabelSelector: LabePodComponentKubeApiserver})
-	if err != nil {
-		log.Printf("list pods in namespace %s with label %s error: %v", metav1.NamespaceSystem, LabePodComponentKubeApiserver, err)
-		return nil, err
-	}
-
-	for i := range podList.Items {
-		r = append(r, fromPod(&podList.Items[i])...)
-	}
-
-	return normal(r), nil
-}
-
-func normal(v []string) []string {
-	v = funk.UniqString(v)
-	sort.Strings(v)
-	return v
-}
-
-func disorder(v []string) []string {
-	rand.Shuffle(len(v), func(i, j int) {
-		v[i], v[j] = v[j], v[i]
-	})
-	return v
-}
-
-func fromNode(node *corev1.Node) []string {
 	var r []string
-	hasInternalIP := false
-	for _, it := range node.Status.Addresses {
-		if it.Type == corev1.NodeInternalIP {
-			r = append(r, it.Address)
-			hasInternalIP = true
-		}
-	}
-	if !hasInternalIP {
+	for _, node := range nodeList.Items {
 		for _, it := range node.Status.Addresses {
-			if it.Type == corev1.NodeHostName {
+			if it.Type == corev1.NodeInternalIP {
 				r = append(r, it.Address)
 			}
 		}
 	}
-	return r
+	return r, nil
 }
 
-func fromPod(pod *corev1.Pod) []string {
+func fromPods(data io.ReadCloser) ([]string, error) {
+	var podList PodList
+	if err := json.NewDecoder(data).Decode(&podList); err != nil {
+		return nil, err
+	}
+
 	var r []string
-	if pod.Spec.HostNetwork {
+	for _, pod := range podList.Items {
 		r = append(r, pod.Status.PodIP)
 		for _, ip := range pod.Status.HostIPs {
 			r = append(r, ip.IP)
 		}
 	}
-	return r
+	return r, nil
 }

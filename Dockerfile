@@ -19,4 +19,5 @@ RUN /hacox --version
 
 FROM scratch
 COPY --from=0 /hacox /hacox
+ENV GOGC=50
 ENTRYPOINT [ "/hacox" ]
