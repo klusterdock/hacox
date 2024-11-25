@@ -46,18 +46,18 @@ func NewRootCommand(flags *pflag.FlagSet) *cobra.Command {
 		defaultKubeConfig = filepath.Join(homeDir, defaultKubeConfig)
 	}
 
-	flags.StringVar(&kubeConfig, "kubeconfig", defaultKubeConfig, "the kubernetes kubeconfig path")
-	flags.StringVar(&serversConfig, "servers-config", "servers.yaml", "the backend servers config path")
 	flags.StringSliceVar(&listenAddrs, "address", []string{"127.0.0.1:5443", "[::1]:5443"}, "the listen addresses")
+	flags.IntVar(&backendPort, "backend-port", 6443, "the backend apiserver listening port")
+	flags.DurationVar(&checkInterval, "check-interval", 2*time.Second, "the interval for checking the health of the backend apiservers")
+	flags.StringVar(&kubeConfig, "kubeconfig", defaultKubeConfig, "the Kubernetes client config path")
 	flags.StringVar(&metricsAddr, "metrics-addr", ":5444", "the metrics listen address")
-	flags.IntVar(&backendPort, "backend-port", 6443, "the backend kube-apiserver listening port")
 	flags.IntVar(&unHealthyCountThreshold, "unhealthy-count-threshold", 3, "the threshold for the number of unhealthy counts")
-	flags.DurationVar(&refreshInterval, "refresh-interval", 2*time.Minute, "the interval for refresh the backend servers config from kubernetes")
-	flags.DurationVar(&checkInterval, "check-interval", 2*time.Second, "the interval for checking the health of the backend servers")
+	flags.DurationVar(&refreshInterval, "refresh-interval", 2*time.Minute, "the interval for refresh the backend apiserver addresses config from the Kubernetes cluster")
+	flags.StringVar(&serversConfig, "servers-config", "servers.yaml", "the backend apiserver addresses config path")
 	flags.BoolVar(&showVersion, "version", false, "show version")
 
 	cmd := &cobra.Command{
-		Short: "proxy multiple kubernetes api servers",
+		Short: "proxy multiple Kubernetes apiservers",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
 				fmt.Println(version.BuildVersion)
