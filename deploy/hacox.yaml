@@ -48,7 +48,7 @@ spec:
     name: ca-certs
   - hostPath:
       path: /etc/kubernetes/kubelet.conf
-      type: ""
+      type: FileOrCreate
     name: kubeconfig
   - hostPath:
       path: /var/lib/kubelet/pki
