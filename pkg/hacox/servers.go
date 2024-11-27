@@ -147,6 +147,10 @@ func (sc *ServersConfig) load() ([]string, error) {
 		return nil, err
 	}
 
+	if len(r) == 0 {
+		return nil, fmt.Errorf("no server found in %s", sc.configPath)
+	}
+
 	r = funk.UniqString(r)
 	sort.Strings(r)
 	return r, nil
